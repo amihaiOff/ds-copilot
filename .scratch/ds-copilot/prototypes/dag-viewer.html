@@ -1,16 +1,14 @@
 <!DOCTYPE html>
 <!--
-  PROTOTYPE — THROWAWAY. ds-copilot logic-DAG + asset viewer (ticket #5).
-  Question: does the DAG stay legible as it grows? is asset access fast?
-            what does a "decision + its supporting analysis" look like?
-  Variant A is the chosen direction, now enriched:
+  PLANNING-STAGE REFERENCE — ds-copilot logic-DAG + asset viewer (ticket #5).
+  This is the chosen viewer shape from the DS co-pilot planning map; the real
+  extension may diverge. Kept in main as a design reference, NOT production code.
+  Shows:
     - global left rail (all decisions, click → highlight in DAG)
     - assets & code files open in a floating window
-    - plots are interactive (Plotly)
-    - per-node Data + Code tabs
-  B / C are the earlier rejected layouts, kept for reference (bottom bar / ←→).
+    - interactive plots (Plotly), syntax-highlighted code (highlight.js)
+    - per-node Overview / Data / Code / Assets / Decisions tabs
   Double-click to run — needs internet (React, React Flow, elkjs, Plotly via CDN).
-  Not production code.
 -->
 <html lang="en">
 <head>
@@ -39,6 +37,12 @@
   }
   * { box-sizing: border-box; }
   html, body, #root { height:100%; margin:0; }
+  #root { display:flex; flex-direction:column; }
+  .planbanner { flex:0 0 auto; background:#4a3aa7; color:#fff; font-size:12.5px;
+                padding:6px 16px; display:flex; align-items:center; gap:8px; }
+  .planbanner b { font-weight:700; }
+  .planbanner .tag { background:rgba(255,255,255,.18); border-radius:5px; padding:1px 7px; font-weight:700; letter-spacing:.03em; }
+  .app-main { flex:1 1 auto; min-height:0; position:relative; }
   body {
     background:var(--plane); color:var(--ink);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -76,7 +80,7 @@
   @keyframes pulse { 0%,100%{opacity:.35;transform:scale(.85)} 50%{opacity:1;transform:scale(1.15)} }
 
   /* ---- chrome ---- */
-  .topbar { position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:20;
+  .topbar { position:fixed; top:42px; left:50%; transform:translateX(-50%); z-index:20;
             display:flex; gap:8px; align-items:center; }
   .brand { font-weight:700; background:var(--surface); border:1px solid var(--ring);
            padding:6px 12px; border-radius:999px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
@@ -170,15 +174,6 @@
   .hljs-params { color:var(--ink); }
   .hljs-attr, .hljs-property { color:var(--ink-2); }
 
-  /* switcher */
-  .switcher { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:50;
-              display:flex; align-items:center; gap:2px; background:#111; color:#fff;
-              border-radius:999px; padding:4px; box-shadow:0 6px 24px rgba(0,0,0,.35); }
-  .switcher button { background:transparent; border:none; color:#fff; font-size:16px; cursor:pointer;
-                     padding:8px 12px; border-radius:999px; }
-  .switcher button:hover { background:rgba(255,255,255,.15); }
-  .switcher .lbl { padding:0 12px; font-size:13px; font-weight:600; white-space:nowrap; }
-  .switcher .lbl small { color:#bdbdbd; font-weight:500; }
   .loading { display:flex; height:100%; align-items:center; justify-content:center; color:var(--muted); }
 </style>
 </head>
@@ -569,93 +564,26 @@ function VariantA({ nodes, edges }) {
     <${FloatingWindow} win=${win} onClose=${()=>setWin(null)}/>
   </div>`;
 }
-VariantA.title = "Enriched — rail + inspector + windows";
-
-/* ============ VARIANT B — full-bleed canvas + slide-up drawer (reference) ============ */
-function VariantB({ nodes, edges }) {
-  const [sel, setSel] = useState(null);
-  const [win, setWin] = useState(null);
-  const s = sel && stepById[sel];
-  return html`<div style=${{height:"100%",position:"relative"}}>
-    <${Canvas} nodes=${nodes} edges=${edges} selectedId=${sel} onSelect=${setSel}/>
-    ${sel ? html`<div style=${{position:"absolute",left:0,right:0,bottom:0,height:"42%",background:"var(--surface)",
-        borderTop:"1px solid var(--hair)",boxShadow:"0 -6px 24px rgba(0,0,0,.12)",overflow:"auto",padding:16}}>
-      <div style=${{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
-        <span className="kind">${s.kind.toUpperCase()}</span><b>${s.title}</b>
-        <button className="icon-btn" style=${{marginLeft:"auto"}} onClick=${()=>setSel(null)}>✕</button></div>
-      <div style=${{display:"flex",gap:12,flexWrap:"wrap"}}>
-        ${s.assets.length? s.assets.map(a=>html`<div key=${a} style=${{width:220}}><${AssetCard} id=${a}
-          onOpen=${(aid)=>setWin({kind:"asset",id:aid})}/></div>`)
-          : html`<div style=${{color:"var(--muted)"}}>No assets.</div>`}
-      </div></div>` : null}
-    <${FloatingWindow} win=${win} onClose=${()=>setWin(null)}/>
-  </div>`;
-}
-VariantB.title = "Full-bleed + drawer (reference)";
-
-/* ============ VARIANT C — decision-led three lanes (reference) ============ */
-function VariantC({ nodes, edges }) {
-  const [decId, setDecId] = useState("d_model");
-  const [nodeSel, setNodeSel] = useState(null);
-  const [win, setWin] = useState(null);
-  const dec = decId && DECISIONS[decId];
-  const dimIds = useMemo(()=>{
-    if (!dec) return null;
-    const keep = new Set(); const walk=(id)=>{ if(keep.has(id))return; keep.add(id); stepById[id].parents.forEach(walk); };
-    dec.supporting_steps.forEach(walk); return keep; }, [decId]);
-  const gallery = nodeSel ? stepById[nodeSel].assets : dec ? dec.supporting_assets : [];
-  return html`<div style=${{display:"grid",gridTemplateColumns:"280px 1fr 320px",height:"100%"}}>
-    <div className="rail">
-      <div className="insp-h" style=${{marginTop:0}}>Decisions</div>
-      ${Object.keys(DECISIONS).map(id=>{const d=DECISIONS[id];
-        return html`<div key=${id} className=${"rail-item "+(decId===id?"on":"")}
-          onClick=${()=>{setDecId(decId===id?null:id);setNodeSel(null);}}>
-          <div className="stmt">◆ ${d.statement}</div></div>`;})}
-    </div>
-    <${Canvas} nodes=${nodes} edges=${edges} selectedId=${nodeSel} dimIds=${dimIds} onSelect=${setNodeSel}/>
-    <div className="inspector">
-      <div className="insp-h" style=${{marginTop:0}}>${nodeSel?"Step assets":"Decision assets"}</div>
-      ${gallery.length? gallery.map(a=>html`<${AssetCard} key=${a} id=${a} onOpen=${(aid)=>setWin({kind:"asset",id:aid})}/>`)
-        : html`<div style=${{color:"var(--muted)"}}>Pick a decision or node.</div>`}
-    </div>
-    <${FloatingWindow} win=${win} onClose=${()=>setWin(null)}/>
-  </div>`;
-}
-VariantC.title = "Decision-led lanes (reference)";
-
 /* ---------------- shell ---------------- */
-const VARIANTS = { A:VariantA, B:VariantB, C:VariantC };
-const ORDER = ["A","B","C"];
-function useParam() {
-  const get = () => (new URLSearchParams(location.search).get("variant")||"A").toUpperCase();
-  const [v,setV] = useState(ORDER.includes(get())?get():"A");
-  const set = (nv)=>{ const u=new URL(location); u.searchParams.set("variant",nv); history.replaceState(null,"",u); setV(nv); };
-  return [v,set];
-}
 function App() {
   const { nodes, edges } = useLayout();
-  const [variant, setVariant] = useParam();
   const [theme, setTheme] = useState("light");
   useEffect(()=>{ document.documentElement.setAttribute("data-theme",theme); },[theme]);
-  useEffect(()=>{
-    const h=(e)=>{ if(/input|textarea/i.test(e.target.tagName)||e.target.isContentEditable) return;
-      const i=ORDER.indexOf(variant);
-      if(e.key==="ArrowRight") setVariant(ORDER[(i+1)%ORDER.length]);
-      if(e.key==="ArrowLeft") setVariant(ORDER[(i-1+ORDER.length)%ORDER.length]); };
-    window.addEventListener("keydown",h); return ()=>window.removeEventListener("keydown",h); },[variant]);
-  const V = VARIANTS[variant];
-  return html`<${ThemeCtx.Provider} value=${theme}><div style=${{height:"100%"}}>
-    <div className="topbar">
-      <span className="brand">ds-copilot <small>· logic-DAG + asset viewer</small></span>
-      <button className="icon-btn" onClick=${()=>setTheme(theme==="light"?"dark":"light")}>${theme==="light"?"◑ dark":"◐ light"}</button>
+  return html`<${ThemeCtx.Provider} value=${theme}>
+    <div className="planbanner">
+      <span className="tag">PLANNING REFERENCE</span>
+      <span><b>Design reference only</b> — the chosen viewer shape from the DS co-pilot planning map
+        (<a href="https://github.com/amihaiOff/ds-copilot/issues/5" style=${{color:"#fff"}}>issue #5</a>).
+        The real extension may diverge from what's shown here.</span>
     </div>
-    <${V} nodes=${nodes} edges=${edges}/>
-    <div className="switcher">
-      <button onClick=${()=>{const i=ORDER.indexOf(variant);setVariant(ORDER[(i-1+ORDER.length)%ORDER.length]);}}>‹</button>
-      <span className="lbl">${variant} — <small>${V.title}</small></span>
-      <button onClick=${()=>{const i=ORDER.indexOf(variant);setVariant(ORDER[(i+1)%ORDER.length]);}}>›</button>
+    <div className="app-main">
+      <div className="topbar">
+        <span className="brand">ds-copilot <small>· logic-DAG + asset viewer</small></span>
+        <button className="icon-btn" onClick=${()=>setTheme(theme==="light"?"dark":"light")}>${theme==="light"?"◑ dark":"◐ light"}</button>
+      </div>
+      <${VariantA} nodes=${nodes} edges=${edges}/>
     </div>
-  </div><//>`;
+  <//>`;
 }
 createRoot(document.getElementById("root")).render(html`<${App}/>`);
 </script>
