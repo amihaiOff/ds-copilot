@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<!--
+  PROTOTYPE — THROWAWAY. ds-copilot logic-DAG + asset viewer (ticket #5).
+  Question: does the DAG stay legible as it grows? is asset access fast?
+            what does a "decision + its supporting analysis" look like?
+  Variant A is the chosen direction, now enriched:
+    - global left rail (all decisions, click → highlight in DAG)
+    - assets & code files open in a floating window
+    - plots are interactive (Plotly)
+    - per-node Data + Code tabs
+  B / C are the earlier rejected layouts, kept for reference (bottom bar / ←→).
+  Double-click to run — needs internet (React, React Flow, elkjs, Plotly via CDN).
+  Not production code.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ds-copilot — DAG + asset viewer (prototype)</title>
+<link rel="stylesheet" href="https://esm.sh/reactflow@11.11.4/dist/style.css" />
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --plane:#f9f9f7; --surface:#fcfcfb; --surface-2:#f2f1ec;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --hair:#e1e0d9; --ring:rgba(11,11,11,0.10);
+    --st-done:#0ca30c; --st-running:#2a78d6; --st-proposed:#898781; --st-dead:#d03b3b;
+    --accent:#2a78d6; --decision:#4a3aa7;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#232322;
+    --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --hair:#2c2c2a; --ring:rgba(255,255,255,0.10);
+    --st-done:#0ca30c; --st-running:#3987e5; --st-proposed:#898781; --st-dead:#e34948;
+    --accent:#3987e5; --decision:#9085e9;
+  }
+  * { box-sizing: border-box; }
+  html, body, #root { height:100%; margin:0; }
+  body {
+    background:var(--plane); color:var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size:14px; overflow:hidden;
+  }
+  .react-flow__attribution { display:none; }
+  .react-flow__edge-path { stroke:var(--muted); stroke-width:1.5; }
+  .react-flow__edge.dim .react-flow__edge-path { opacity:0.12; }
+  .rf-wrap { width:100%; height:100%; background:var(--plane); }
+
+  /* ---- node card ---- */
+  .node {
+    width:220px; background:var(--surface); border:1px solid var(--ring);
+    border-left:5px solid var(--muted); border-radius:10px; padding:10px 12px;
+    box-shadow:0 1px 2px rgba(0,0,0,0.06); cursor:pointer; transition:box-shadow .12s, transform .12s;
+  }
+  .node:hover { box-shadow:0 4px 14px rgba(0,0,0,0.14); transform:translateY(-1px); }
+  .node.sel { outline:2px solid var(--accent); outline-offset:2px; }
+  .node.dim { opacity:0.22; }
+  .node.root { border-left-color:var(--decision); background:var(--surface-2); }
+  .node.st-done   { border-left-color:var(--st-done); }
+  .node.st-running{ border-left-color:var(--st-running); }
+  .node.st-proposed { border-left-color:var(--st-proposed); border-style:dashed; }
+  .node.st-dead { border-left-color:var(--st-dead); opacity:0.6; }
+  .node.st-dead .node-title { text-decoration:line-through; }
+  .node-top { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .kind { font-size:10px; font-weight:700; letter-spacing:.05em; color:var(--muted); }
+  .status { margin-left:auto; font-size:11px; font-weight:600; display:flex; align-items:center; gap:4px; }
+  .node-title { font-weight:600; line-height:1.25; }
+  .node-meta { margin-top:7px; display:flex; gap:10px; font-size:11px; color:var(--ink-2); }
+  .pill { display:inline-flex; align-items:center; gap:4px; background:var(--surface-2);
+          border:1px solid var(--hair); border-radius:999px; padding:1px 7px; }
+  .running-dot { width:7px;height:7px;border-radius:50%;background:var(--st-running);
+                 animation:pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:.35;transform:scale(.85)} 50%{opacity:1;transform:scale(1.15)} }
+
+  /* ---- chrome ---- */
+  .topbar { position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:20;
+            display:flex; gap:8px; align-items:center; }
+  .brand { font-weight:700; background:var(--surface); border:1px solid var(--ring);
+           padding:6px 12px; border-radius:999px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .brand small { color:var(--muted); font-weight:500; }
+  .icon-btn { background:var(--surface); border:1px solid var(--ring); border-radius:999px;
+              padding:6px 10px; cursor:pointer; color:var(--ink); font-size:13px; }
+
+  /* ---- global left rail ---- */
+  .rail { background:var(--surface); border-right:1px solid var(--hair); height:100%;
+          overflow:auto; padding:16px 14px; }
+  .rail h1 { font-size:15px; margin:2px 0 2px; }
+  .rail .sub { color:var(--muted); font-size:12px; margin-bottom:14px; }
+  .rail-item { padding:9px 10px; border-radius:8px; border:1px solid var(--hair); margin-bottom:8px;
+               cursor:pointer; border-left:3px solid var(--decision); }
+  .rail-item:hover { border-color:var(--accent); }
+  .rail-item.on { background:var(--surface-2); outline:2px solid var(--decision); }
+  .rail-item .stmt { font-weight:600; font-size:13px; line-height:1.25; }
+  .rail-item .by { font-size:11px; color:var(--muted); margin-top:4px; }
+  .rail-stat { display:flex; gap:8px; margin-bottom:14px; }
+  .rail-stat .box { flex:1; background:var(--surface-2); border:1px solid var(--hair);
+                    border-radius:8px; padding:8px; text-align:center; }
+  .rail-stat .box b { display:block; font-size:18px; }
+  .rail-stat .box span { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+
+  /* ---- inspector ---- */
+  .inspector { background:var(--surface); border-left:1px solid var(--hair); height:100%;
+               overflow:auto; padding:18px; }
+  .insp-empty { color:var(--muted); display:flex; height:100%; align-items:center;
+                justify-content:center; text-align:center; padding:0 24px; }
+  .insp-h { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+            margin:18px 0 8px; }
+  h2.insp-title { margin:6px 0 2px; font-size:18px; line-height:1.25; }
+  .tabs { display:flex; gap:2px; margin:14px 0 4px; border-bottom:1px solid var(--hair); flex-wrap:wrap; }
+  .tab { padding:7px 10px; cursor:pointer; border-bottom:2px solid transparent; color:var(--ink-2); font-weight:600; font-size:13px; }
+  .tab.on { color:var(--ink); border-bottom-color:var(--accent); }
+
+  .card { background:var(--surface); border:1px solid var(--hair); border-radius:10px;
+          padding:12px; margin-bottom:10px; }
+  .asset-card { cursor:pointer; }
+  .asset-card:hover { border-color:var(--accent); }
+  .asset-type { font-size:10px; font-weight:700; letter-spacing:.05em; color:var(--muted);
+                display:flex; align-items:center; gap:6px; }
+  .asset-cap { margin-top:4px; color:var(--ink); font-weight:500; }
+  .expand-hint { font-size:11px; color:var(--accent); margin-top:6px; }
+  .decision { border-left:3px solid var(--decision); }
+  .decision .stmt { font-weight:600; }
+  .decision .rat { color:var(--ink-2); margin-top:4px; font-size:13px; }
+  .chip { font-size:11px; background:var(--surface-2); border:1px solid var(--hair);
+          border-radius:6px; padding:2px 7px; cursor:pointer; }
+  .chip:hover { border-color:var(--accent); }
+  .row { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  table.mini { border-collapse:collapse; width:100%; font-size:12px; font-variant-numeric:tabular-nums; }
+  table.mini th, table.mini td { border:1px solid var(--hair); padding:3px 7px; text-align:left; }
+  table.mini th { background:var(--surface-2); font-weight:600; }
+  .kv { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid var(--hair); font-size:13px; }
+  .kv b { font-weight:600; }
+  pre.report { white-space:pre-wrap; font-family:inherit; font-size:13px; color:var(--ink-2);
+               background:var(--surface-2); border-radius:8px; padding:10px; margin:0; }
+  .file-row { display:flex; align-items:center; gap:8px; padding:9px 11px; border:1px solid var(--hair);
+              border-radius:8px; margin-bottom:8px; cursor:pointer; font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+  .file-row:hover { border-color:var(--accent); }
+  .file-row .when { margin-left:auto; color:var(--muted); font-family:system-ui; }
+  .ds-name { font-family:ui-monospace,Menlo,monospace; font-weight:600; }
+  .badge-tbd { font-size:10px; background:var(--surface-2); border:1px dashed var(--muted);
+               color:var(--muted); border-radius:6px; padding:2px 6px; }
+
+  /* ---- floating window ---- */
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:60;
+             display:flex; align-items:center; justify-content:center; }
+  .window { width:72vw; height:78vh; max-width:1100px; background:var(--surface);
+            border:1px solid var(--ring); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.4);
+            display:flex; flex-direction:column; overflow:hidden; }
+  .window-head { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--hair); }
+  .window-head .wt { font-size:10px; font-weight:700; letter-spacing:.05em; color:var(--muted); }
+  .window-head b { font-size:15px; }
+  .window-body { flex:1; overflow:auto; padding:16px; }
+  pre.code { margin:0; font-family:ui-monospace,Menlo,monospace; font-size:13px; line-height:1.6;
+             background:var(--surface-2); border-radius:8px; padding:0; overflow:auto; height:100%;
+             counter-reset:ln; }
+  pre.code code { display:block; padding:14px 14px 14px 0; background:none; }
+  pre.code .line { display:block; padding-left:56px; position:relative; white-space:pre; }
+  pre.code .line::before { counter-increment:ln; content:counter(ln); position:absolute; left:0; width:40px;
+             text-align:right; color:var(--muted); opacity:.6; user-select:none; }
+  /* highlight.js tokens mapped to the palette (works light + dark) */
+  .hljs-comment, .hljs-meta { color:var(--muted); font-style:italic; }
+  .hljs-keyword, .hljs-literal { color:var(--decision); font-weight:600; }
+  .hljs-string { color:var(--st-done); }
+  .hljs-number { color:#c26016; }
+  .hljs-built_in, .hljs-type { color:#008300; }
+  .hljs-title, .hljs-title.function_, .hljs-title.class_ { color:var(--accent); font-weight:600; }
+  .hljs-params { color:var(--ink); }
+  .hljs-attr, .hljs-property { color:var(--ink-2); }
+
+  /* switcher */
+  .switcher { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:50;
+              display:flex; align-items:center; gap:2px; background:#111; color:#fff;
+              border-radius:999px; padding:4px; box-shadow:0 6px 24px rgba(0,0,0,.35); }
+  .switcher button { background:transparent; border:none; color:#fff; font-size:16px; cursor:pointer;
+                     padding:8px 12px; border-radius:999px; }
+  .switcher button:hover { background:rgba(255,255,255,.15); }
+  .switcher .lbl { padding:0 12px; font-size:13px; font-weight:600; white-space:nowrap; }
+  .switcher .lbl small { color:#bdbdbd; font-weight:500; }
+  .loading { display:flex; height:100%; align-items:center; justify-content:center; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="module">
+import React, { useState, useEffect, useMemo, useRef, useContext, createContext }
+  from "https://esm.sh/react@18.2.0";
+import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
+import htm from "https://esm.sh/htm@3.1.1";
+import ReactFlow, { Background, Controls, MiniMap, Handle, Position, MarkerType }
+  from "https://esm.sh/reactflow@11.11.4?deps=react@18.2.0,react-dom@18.2.0";
+import ELK from "https://esm.sh/elkjs@0.9.3/lib/elk.bundled.js";
+
+const html = htm.bind(React.createElement);
+const elk = new ELK();
+const ThemeCtx = createContext("light");
+
+/* ---------------- interactive plots (Plotly) ---------------- */
+function PlotlyChart({ figure, interactive }) {
+  const ref = useRef(null);
+  const theme = useContext(ThemeCtx);
+  useEffect(() => {
+    if (!window.Plotly || !ref.current) return;
+    const dark = theme === "dark";
+    const base = {
+      margin:{ l:44, r:14, t:16, b:36 }, showlegend:false,
+      paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
+      font:{ family:"system-ui, sans-serif", size:11, color: dark?"#c3c2b7":"#52514e" },
+      xaxis:{ gridcolor: dark?"#2c2c2a":"#e1e0d9", zeroline:false, automargin:true },
+      yaxis:{ gridcolor: dark?"#2c2c2a":"#e1e0d9", zeroline:false, automargin:true },
+    };
+    const layout = { ...base, ...figure.layout,
+      xaxis:{ ...base.xaxis, ...(figure.layout?.xaxis||{}) },
+      yaxis:{ ...base.yaxis, ...(figure.layout?.yaxis||{}) } };
+    window.Plotly.newPlot(ref.current, figure.data, layout,
+      { displayModeBar: !!interactive, staticPlot: !interactive, responsive:true });
+    return () => { try { window.Plotly.purge(ref.current); } catch(e){} };
+  }, [figure, interactive, theme]);
+  return html`<div ref=${ref} style=${{width:"100%",height:"100%"}}/>`;
+}
+
+/* ---------------- syntax-highlighted code view ---------------- */
+function CodeView({ content }) {
+  const htmlStr = useMemo(()=>{
+    const out = window.hljs
+      ? window.hljs.highlight(content, { language:"python" }).value
+      : content.replace(/[&<>]/g, c=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+    return out.split("\n").map(l=>`<span class="line">${l || " "}</span>`).join("");
+  }, [content]);
+  return html`<pre className="code"><code className="language-python"
+    dangerouslySetInnerHTML=${{ __html: htmlStr }}/></pre>`;
+}
+
+/* ---------------- fixed sample state (matches #2 domain model) ---------------- */
+// churn-prediction project. multi-parent DAG, every status & kind, a dead-end,
+// first-class decisions, real assets, per-step dataset + code provenance.
+
+const figBalance = { data:[{ type:"bar", x:["Retain","Churn"], y:[82,18],
+    marker:{color:["#2a78d6","#eb6834"]}, text:["82%","18%"], textposition:"outside",
+    hovertemplate:"%{x}: %{y}%<extra></extra>" }],
+  layout:{ yaxis:{ title:"% of subscribers", range:[0,100] } } };
+const roc = (col, tpr) => ({ data:[
+    { x:[0,.02,.05,.1,.2,.35,.6,1], y:tpr, mode:"lines", line:{color:col,width:3},
+      hovertemplate:"FPR %{x:.2f}<br>TPR %{y:.2f}<extra></extra>" },
+    { x:[0,1], y:[0,1], mode:"lines", line:{color:"#c3c2b7",dash:"dash",width:1}, hoverinfo:"skip" }],
+  layout:{ xaxis:{title:"False positive rate",range:[0,1]}, yaxis:{title:"True positive rate",range:[0,1]} } });
+const figRenew = { data:[{ type:"bar",
+    x:["0-3","3-6","6-9","9-12","12-15","15-18","18+"], y:[520,1400,2100,1650,600,220,90],
+    marker:{ color:["#1baf7a","#1baf7a","#1baf7a","#1baf7a","#898781","#898781","#898781"] },
+    hovertemplate:"%{x} mo: %{y} subscribers<extra></extra>" }],
+  layout:{ yaxis:{title:"subscribers"}, xaxis:{title:"renewal history (months)"},
+    shapes:[{ type:"line", x0:3.5, x1:3.5, y0:0, y1:2200, line:{color:"#d03b3b",dash:"dot",width:2} }],
+    annotations:[{ x:3.5, y:2200, text:"12-mo cut", showarrow:false, font:{color:"#d03b3b",size:11}, yshift:8 }] } };
+
+const ASSETS = {
+  a_balance:{ id:"a_balance", type:"plot", caption:"Class balance — 82% retain / 18% churn", figure:figBalance, code_ref:"eda.ipynb" },
+  a_stats:  { id:"a_stats", type:"table", caption:"Summary statistics (12 numeric cols)", code_ref:"eda.ipynb",
+              rows:[["feature","mean","nulls"],["tenure_mo","19.4","0%"],["mrr","54.10","0%"],["logins_30d","8.2","3%"],["support_tix","1.1","0%"]] },
+  a_leak:   { id:"a_leak", type:"table", caption:"Leakage: corr(feature, target)", code_ref:"leakage.ipynb",
+              rows:[["column","corr","verdict"],["cancel_reason","0.98","LEAK"],["refund_amt","0.91","LEAK"],["exit_survey","0.87","LEAK"],["tenure_mo","0.22","keep"]] },
+  a_renew:  { id:"a_renew", type:"plot", caption:"Renewal-history length distribution", figure:figRenew, code_ref:"renewals.ipynb" },
+  a_nulls:  { id:"a_nulls", type:"table", caption:"Null audit — pattern is import error, not churn", code_ref:"nulls.ipynb",
+              rows:[["col","null%","pattern"],["logins_30d","3%","random"],["region","41%","one bad export"]] },
+  a_feats:  { id:"a_feats", type:"table", caption:"Engineered feature list (v1)", code_ref:"features.py",
+              rows:[["feature","source"],["tenure_bucket","tenure_mo"],["recency_ratio","logins_30d/tenure"],["mrr_delta_3m","billing"]] },
+  a_roc_cat:{ id:"a_roc_cat", type:"plot", caption:"CatBoost ROC — AUC 0.87", figure:roc("#2a78d6",[0,.35,.55,.68,.8,.9,.96,1]), code_ref:"train_catboost.py" },
+  a_roc_xgb:{ id:"a_roc_xgb", type:"plot", caption:"XGBoost ROC — AUC 0.84", figure:roc("#eb6834",[0,.28,.46,.6,.74,.86,.94,1]), code_ref:"train_xgb.py" },
+  a_model:  { id:"a_model", type:"model", caption:"catboost_v1.cbm", code_ref:"train_catboost.py",
+              kv:{ "framework":"CatBoost 1.2", "AUC (val)":"0.871", "iterations":"1200", "size":"3.4 MB", "trained":"2026-08-24" } },
+  a_report: { id:"a_report", type:"report", caption:"Model eval report", code_ref:"eval.ipynb",
+              text:"# CatBoost baseline\n\nValidation AUC 0.871 (XGB 0.842).\nRecall@top-decile 0.61. Calibration drifts above p=0.7\n→ follow-up: calibration analysis (running).\n\nTop features: recency_ratio, tenure_bucket, mrr_delta_3m." },
+};
+
+const DECISIONS = {
+  d_leak:{ id:"d_leak", statement:"Drop 3 post-cancellation leaky columns", made_by:"human", made_at:"2026-08-22",
+           rationale:"cancel_reason / refund_amt / exit_survey correlate ~0.9 with the target but only exist after churn — pure leakage.",
+           supporting_steps:["s_leak"], supporting_assets:["a_leak"] },
+  d_trunc:{ id:"d_trunc", statement:"Truncate renewal history at 12 months", made_by:"human", made_at:"2026-08-23",
+           rationale:"Long right tail adds noise; 12mo captures 94% of signal and stabilises tenure features.",
+           supporting_steps:["s_renew"], supporting_assets:["a_renew"] },
+  d_model:{ id:"d_model", statement:"Ship CatBoost over XGBoost as the v1 baseline", made_by:"human", made_at:"2026-08-24",
+           rationale:"CatBoost AUC 0.871 vs XGB 0.842 on identical features, and native categorical handling cuts preprocessing.",
+           supporting_steps:["s_cat","s_xgb"], supporting_assets:["a_roc_cat","a_roc_xgb","a_report"] },
+};
+
+const DATASETS = {
+  ds_raw:  { id:"ds_raw", name:"subscriptions.parquet", rows:48213, cols:27,
+             description:"One row per subscriber observed over a 90-day window; churn = cancelled within the window. Raw warehouse export (BigQuery `analytics.subscriptions`), pulled 2026-08-20. Includes post-cancellation columns that must NOT be used as features." },
+  ds_clean:{ id:"ds_clean", name:"subscriptions_clean.parquet", rows:48213, cols:21,
+             description:"Derived from subscriptions.parquet after dropping 3 leaky columns and truncating renewal history at 12 months. This is the modelling table for all experiments downstream of feature engineering." },
+};
+
+const code = (path, ran_at, content) => ({ path, ran_at, content });
+const STEPS = [
+  { id:"s_root", kind:"root", status:"done", title:"Predict subscriber churn (AUC on 90-day window)",
+    parents:[], dataset_ref:"ds_raw",
+    goal:"Objective: rank subscribers by 90-day churn risk. Target: ROC-AUC. Dataset: subscriptions.parquet (48k rows).",
+    assets:[], decisions:[], code_files:[] },
+  { id:"s_eda", kind:"analysis", status:"done", title:"EDA: base rate & class balance", parents:["s_root"], dataset_ref:"ds_raw",
+    goal:"How imbalanced is the target? What's the shape of the numeric features?",
+    conclusion:"18% churn base rate; no severe skew after log-scaling MRR.", assets:["a_balance","a_stats"], decisions:[],
+    code_files:[ code("eda.ipynb","2026-08-21 14:02","import pandas as pd\n\ndf = pd.read_parquet('subscriptions.parquet')\nprint(df['churn'].mean())   # 0.181\n\ndf.describe().T[['mean','std']]\n# class balance plot -> assets/class_balance") ] },
+  { id:"s_leak", kind:"analysis", status:"done", title:"Leakage check: post-cancellation columns", parents:["s_root","s_eda"], dataset_ref:"ds_raw",
+    goal:"Are any features only knowable after a customer churns?",
+    conclusion:"3 columns leak the target (corr ~0.9). Must be dropped.", assets:["a_leak"], decisions:["d_leak"],
+    code_files:[ code("leakage.ipynb","2026-08-22 09:15","corr = df.corrwith(df['churn']).sort_values(ascending=False)\nleaky = corr[corr > 0.8].index.tolist()\n# ['cancel_reason','refund_amt','exit_survey']\nassert set(leaky) <= POST_CANCEL_COLS") ] },
+  { id:"s_renew", kind:"analysis", status:"done", title:"Renewal cadence distribution", parents:["s_eda"], dataset_ref:"ds_raw",
+    goal:"How long is renewal history, and where does the tail stop being informative?",
+    conclusion:"94% of signal within 12 months; long tail is noise.", assets:["a_renew"], decisions:["d_trunc"],
+    code_files:[ code("renewals.ipynb","2026-08-23 11:40","hist = df['renewal_months'].value_counts().sort_index()\ncum = hist.cumsum() / hist.sum()\nprint(cum.loc[12])   # 0.94") ] },
+  { id:"s_nulls", kind:"analysis", status:"dead-end", title:"Do nulls mean churned?", parents:["s_eda"], dataset_ref:"ds_raw",
+    goal:"Test the assumption that null = churned before imputing.",
+    conclusion:"Rejected — nulls trace to one bad export, not churn. Abandoned.", assets:["a_nulls"], decisions:[],
+    code_files:[ code("nulls.ipynb","2026-08-23 16:20","null_rate = df.isna().mean()\n# region 41% null -> all from export batch 2026-07\nchi2(df['region'].isna(), df['churn'])   # p=0.62, no relationship") ] },
+  { id:"s_feat", kind:"experiment", status:"done", title:"Feature engineering: tenure & recency", parents:["s_leak","s_renew"], dataset_ref:"ds_clean",
+    goal:"Build v1 feature set on the cleaned, truncated data.",
+    conclusion:"14 features; recency_ratio most promising.", assets:["a_feats"], decisions:[],
+    code_files:[ code("features.py","2026-08-24 08:05","def build_features(df):\n    df['tenure_bucket'] = pd.cut(df['tenure_mo'], [0,6,12,24,999])\n    df['recency_ratio'] = df['logins_30d'] / df['tenure_mo'].clip(lower=1)\n    df['mrr_delta_3m'] = df['mrr'] - df['mrr_lag3']\n    return df") ] },
+  { id:"s_cat", kind:"experiment", status:"done", title:"CatBoost baseline", parents:["s_feat"], dataset_ref:"ds_clean",
+    goal:"Train a CatBoost baseline and evaluate AUC.",
+    conclusion:"Val AUC 0.871. Calibration drifts at high p.", assets:["a_roc_cat","a_model","a_report"], decisions:["d_model"],
+    code_files:[ code("train_catboost.py","2026-08-24 13:30","from catboost import CatBoostClassifier\nm = CatBoostClassifier(iterations=1200, depth=6, learning_rate=0.03)\nm.fit(X_train, y_train, cat_features=CATS, eval_set=(X_val, y_val))\nprint(roc_auc_score(y_val, m.predict_proba(X_val)[:,1]))  # 0.871\nm.save_model('catboost_v1.cbm')"),
+                 code("eval.ipynb","2026-08-24 15:10","auc = roc_auc_score(y_val, p)\nrecall_at_decile(y_val, p, 0.1)   # 0.61\nreliability_curve(y_val, p)       # drift above 0.7") ] },
+  { id:"s_xgb", kind:"experiment", status:"done", title:"XGBoost comparison", parents:["s_feat"], dataset_ref:"ds_clean",
+    goal:"Train XGBoost on identical features for comparison.",
+    conclusion:"Val AUC 0.842 — below CatBoost.", assets:["a_roc_xgb"], decisions:["d_model"],
+    code_files:[ code("train_xgb.py","2026-08-24 14:05","import xgboost as xgb\nm = xgb.XGBClassifier(n_estimators=800, max_depth=5, learning_rate=0.05)\nm.fit(X_train_ohe, y_train)\nprint(roc_auc_score(y_val, m.predict_proba(X_val_ohe)[:,1]))  # 0.842") ] },
+  { id:"s_calib", kind:"analysis", status:"running", title:"Calibration analysis", parents:["s_cat"], dataset_ref:"ds_clean",
+    goal:"Is the CatBoost probability output well-calibrated? Reliability curve + Brier.",
+    conclusion:"", assets:[], decisions:[],
+    code_files:[ code("calibration.ipynb","running…","from sklearn.calibration import calibration_curve\nprob_true, prob_pred = calibration_curve(y_val, p, n_bins=10)\n# running…") ] },
+  { id:"s_sweep", kind:"experiment", status:"proposed", title:"Hyperparameter sweep on CatBoost", parents:["s_cat"], dataset_ref:"ds_clean",
+    goal:"Grid/Bayesian sweep over depth, lr, l2 to lift AUC past 0.88.", conclusion:"", assets:[], decisions:[], code_files:[] },
+  { id:"s_shap", kind:"analysis", status:"proposed", title:"SHAP feature importance", parents:["s_cat"], dataset_ref:"ds_clean",
+    goal:"Explain the baseline: which features drive predictions, any surprises?", conclusion:"", assets:[], decisions:[], code_files:[] },
+];
+
+const stepById = Object.fromEntries(STEPS.map(s=>[s.id,s]));
+const NODE_W = 224, NODE_H = 96;
+const STATUS = {
+  proposed:{ label:"Proposed", icon:"○" }, running:{ label:"Running", icon:"◐" },
+  done:{ label:"Done", icon:"✓" }, "dead-end":{ label:"Dead-end", icon:"✕" },
+};
+const statusColorVar = { done:"var(--st-done)", running:"var(--st-running)",
+  proposed:"var(--st-proposed)", "dead-end":"var(--st-dead)" };
+const ASSET_ICON = { plot:"▨", table:"▤", model:"◈", report:"❐" };
+
+/* ---------------- elk layout ---------------- */
+function useLayout() {
+  const [nodes, setNodes] = useState(null);
+  const [edges, setEdges] = useState([]);
+  useEffect(() => {
+    const g = { id:"root",
+      layoutOptions:{ "elk.algorithm":"layered", "elk.direction":"DOWN",
+        "elk.layered.spacing.nodeNodeBetweenLayers":"70", "elk.spacing.nodeNode":"46",
+        "elk.layered.nodePlacement.strategy":"NETWORK_SIMPLEX" },
+      children: STEPS.map(s=>({ id:s.id, width:NODE_W, height:NODE_H })),
+      edges: STEPS.flatMap(s=> s.parents.map(p=>({ id:`${p}->${s.id}`, sources:[p], targets:[s.id] }))) };
+    elk.layout(g).then(res=>{
+      setNodes(res.children.map(c=>({ id:c.id, type:"step", position:{x:c.x,y:c.y}, data:{ step:stepById[c.id] } })));
+      setEdges(STEPS.flatMap(s=> s.parents.map(p=>({
+        id:`${p}->${s.id}`, source:p, target:s.id, type:"smoothstep",
+        markerEnd:{ type:MarkerType.ArrowClosed, width:16, height:16 } }))));
+    });
+  }, []);
+  return { nodes, edges };
+}
+
+/* ---------------- step node ---------------- */
+function StepNode({ data }) {
+  const s = data.step, st = STATUS[s.status];
+  const cls = ["node", `st-${s.status}`, s.kind==="root"?"root":"", data.sel?"sel":"", data.dim?"dim":""].join(" ");
+  return html`<div className=${cls}>
+    <${Handle} type="target" position=${Position.Top} style=${{opacity:0}}/>
+    <div className="node-top">
+      <span className="kind">${s.kind.toUpperCase()}</span>
+      <span className="status" style=${{color:statusColorVar[s.status]}}>
+        ${s.status==="running" ? html`<span className="running-dot"/>` : html`<span>${st.icon}</span>`} ${st.label}
+      </span>
+    </div>
+    <div className="node-title">${s.title}</div>
+    <div className="node-meta">
+      ${s.assets.length?html`<span className="pill">▦ ${s.assets.length}</span>`:null}
+      ${s.decisions.length?html`<span className="pill" style=${{color:"var(--decision)"}}>◆ ${s.decisions.length}</span>`:null}
+      ${s.code_files.length?html`<span className="pill">‹/› ${s.code_files.length}</span>`:null}
+    </div>
+    <${Handle} type="source" position=${Position.Bottom} style=${{opacity:0}}/>
+  </div>`;
+}
+const nodeTypes = { step: StepNode };
+
+/* ---------------- previews + floating window ---------------- */
+function AssetPreview({ a, interactive }) {
+  if (a.type==="plot") return html`<${PlotlyChart} figure=${a.figure} interactive=${interactive}/>`;
+  if (a.type==="table") return html`<table className="mini"><tbody>
+      ${a.rows.map((r,i)=>html`<tr key=${i}>${r.map((c,j)=> i===0
+        ? html`<th key=${j}>${c}</th>` : html`<td key=${j}>${c}</td>`)}</tr>`)}</tbody></table>`;
+  if (a.type==="model") return html`<div>${Object.entries(a.kv).map(([k,v])=>
+      html`<div className="kv" key=${k}><span>${k}</span><b>${v}</b></div>`)}</div>`;
+  if (a.type==="report") return html`<pre className="report">${a.text}</pre>`;
+  return null;
+}
+
+function FloatingWindow({ win, onClose }) {
+  useEffect(()=>{ const h=(e)=>{ if(e.key==="Escape") onClose(); };
+    window.addEventListener("keydown",h); return ()=>window.removeEventListener("keydown",h); },[]);
+  if (!win) return null;
+  let head, body;
+  if (win.kind==="asset") {
+    const a = ASSETS[win.id];
+    head = html`<div><span className="wt">${a.type.toUpperCase()}</span><br/><b>${a.caption}</b></div>`;
+    body = win.kind==="asset" && a.type!=="plot"
+      ? html`<div className="card" style=${{maxWidth:640,margin:"0 auto"}}><${AssetPreview} a=${a}/></div>`
+      : html`<${AssetPreview} a=${a} interactive=${true}/>`;
+  } else { // code
+    const f = win.file;
+    head = html`<div><span className="wt">CODE · ran ${f.ran_at}</span><br/><b>${f.path}</b></div>`;
+    body = html`<${CodeView} content=${f.content}/>`;
+  }
+  return html`<div className="overlay" onClick=${onClose}>
+    <div className="window" onClick=${e=>e.stopPropagation()}>
+      <div className="window-head">${head}
+        <button className="icon-btn" style=${{marginLeft:"auto"}} onClick=${onClose}>✕ close</button></div>
+      <div className="window-body">${body}</div>
+    </div></div>`;
+}
+
+function AssetCard({ id, onOpen }) {
+  const a = ASSETS[id];
+  return html`<div className="card asset-card" onClick=${()=>onOpen(id)}>
+    <div className="asset-type">${ASSET_ICON[a.type]} ${a.type.toUpperCase()}
+      <span style=${{marginLeft:"auto",color:"var(--muted)",fontWeight:500,fontFamily:"ui-monospace,monospace"}}>${a.code_ref}</span></div>
+    <div className="asset-cap">${a.caption}</div>
+    <div style=${{marginTop:"10px",height:"130px",background:"var(--surface-2)",border:"1px solid var(--hair)",
+        borderRadius:"8px",overflow:"hidden",padding:"6px"}}><${AssetPreview} a=${a} interactive=${false}/></div>
+    <div className="expand-hint">⤢ click to open in window${a.type==="plot"?" (interactive)":""}</div>
+  </div>`;
+}
+
+/* ---------------- inspector ---------------- */
+function Inspector({ id, onSelect, onOpenAsset, onOpenCode }) {
+  const [tab, setTab] = useState("overview");
+  useEffect(()=>setTab("overview"), [id]);
+  if (!id) return html`<div className="insp-empty">Select a step in the DAG to inspect its
+      goal, data, code, assets and decisions.</div>`;
+  const s = stepById[id], st = STATUS[s.status], ds = DATASETS[s.dataset_ref];
+  const TABS = ["overview","data","code","assets","decisions"];
+  const count = { assets:s.assets.length, code:s.code_files.length, decisions:s.decisions.length };
+  return html`<div>
+    <div className="kind">${s.kind.toUpperCase()}</div>
+    <h2 className="insp-title">${s.title}</h2>
+    <div style=${{color:statusColorVar[s.status],fontWeight:600,fontSize:13}}>${st.icon} ${st.label}</div>
+    <div className="tabs">
+      ${TABS.map(t=>html`<div key=${t} className=${"tab "+(tab===t?"on":"")} onClick=${()=>setTab(t)}>
+        ${t[0].toUpperCase()+t.slice(1)}${count[t]?` (${count[t]})`:""}</div>`)}
+    </div>
+    ${tab==="overview" ? html`<div>
+        <div className="insp-h">Goal / brief</div><div className="card">${s.goal}</div>
+        <div className="insp-h">Conclusion</div>
+        <div className="card">${s.conclusion || html`<span style=${{color:"var(--muted)"}}>— not run yet —</span>`}</div>
+        ${s.parents.length?html`<div className="insp-h">Builds on</div>
+          <div className="row">${s.parents.map(p=>html`<span className="chip" key=${p}
+            onClick=${()=>onSelect(p)}>▸ ${stepById[p].title}</span>`)}</div>`:null}
+      </div>` : null}
+    ${tab==="data" ? html`<div>
+        <div className="insp-h">Dataset</div>
+        <div className="card">
+          <div style=${{display:"flex",alignItems:"center",gap:8}}>
+            <span className="ds-name">${ds.name}</span>
+            <span className="badge-tbd">datasheet_ref → #10 (TBD)</span></div>
+          <div style=${{color:"var(--ink-2)",margin:"8px 0"}}>${ds.description}</div>
+          <div className="row">
+            <span className="pill">${ds.rows.toLocaleString()} rows</span>
+            <span className="pill">${ds.cols} columns</span></div>
+        </div>
+        <div style=${{fontSize:12,color:"var(--muted)"}}>Later: a first-class Dataset record with its own
+          description, schema and lineage — this tab is its home.</div>
+      </div>` : null}
+    ${tab==="code" ? (s.code_files.length
+        ? html`<div><div className="insp-h">Files this step ran</div>
+            ${s.code_files.map(f=>html`<div key=${f.path} className="file-row" onClick=${()=>onOpenCode(f)}>
+              <span>‹/›</span><span>${f.path}</span><span className="when">${f.ran_at}</span></div>`)}
+            <div style=${{fontSize:12,color:"var(--muted)"}}>Click a file to open it in a window.</div></div>`
+        : html`<div className="insp-empty" style=${{height:"120px"}}>No code recorded on this step.</div>`) : null}
+    ${tab==="assets" ? (s.assets.length
+        ? html`<div>${s.assets.map(a=>html`<${AssetCard} key=${a} id=${a} onOpen=${onOpenAsset}/>`)}</div>`
+        : html`<div className="insp-empty" style=${{height:"120px"}}>No assets on this step.</div>`) : null}
+    ${tab==="decisions" ? (s.decisions.length
+        ? html`<div>${s.decisions.map(d=>{const dec=DECISIONS[d];
+            return html`<div key=${d} className="card decision">
+              <div className="stmt">◆ ${dec.statement}</div>
+              <div className="rat">${dec.rationale}</div>
+              <div style=${{fontSize:11,color:"var(--muted)",marginTop:6}}>by ${dec.made_by} · ${dec.made_at}</div>
+              <div className="insp-h" style=${{marginTop:12}}>Supporting analysis</div>
+              <div className="row">${dec.supporting_steps.map(sid=>html`<span className="chip" key=${sid}
+                onClick=${()=>onSelect(sid)}>▸ ${stepById[sid].title}</span>`)}</div>
+              <div className="insp-h" style=${{marginTop:10}}>Supporting assets</div>
+              <div className="row">${dec.supporting_assets.map(aid=>html`<span className="chip" key=${aid}
+                onClick=${()=>onOpenAsset(aid)}>${ASSET_ICON[ASSETS[aid].type]} ${ASSETS[aid].caption}</span>`)}</div>
+            </div>`;})}</div>`
+        : html`<div className="insp-empty" style=${{height:"120px"}}>No decisions recorded on this step.</div>`) : null}
+  </div>`;
+}
+
+/* ---------------- shared canvas ---------------- */
+function Canvas({ nodes, edges, selectedId, dimIds, onSelect }) {
+  const rfNodes = useMemo(()=> (nodes||[]).map(n=>({ ...n,
+    data:{ ...n.data, sel:n.id===selectedId, dim: dimIds && !dimIds.has(n.id) } })), [nodes, selectedId, dimIds]);
+  const rfEdges = useMemo(()=> edges.map(e=>({ ...e,
+    className: dimIds && !(dimIds.has(e.source)&&dimIds.has(e.target)) ? "dim" : "" })), [edges, dimIds]);
+  if (!nodes) return html`<div className="loading">laying out DAG…</div>`;
+  return html`<div className="rf-wrap"><${ReactFlow}
+      nodes=${rfNodes} edges=${rfEdges} nodeTypes=${nodeTypes}
+      onNodeClick=${(_,n)=>onSelect(n.id)} onPaneClick=${()=>onSelect(null)}
+      fitView minZoom=${0.25} proOptions=${{hideAttribution:true}} nodesDraggable=${false} nodesConnectable=${false}>
+      <${Background} gap=${22} color="var(--hair)"/>
+      <${Controls} showInteractive=${false}/>
+      <${MiniMap} pannable zoomable nodeColor=${n=> ({done:"#0ca30c",running:"#2a78d6",proposed:"#898781","dead-end":"#d03b3b"}[stepById[n.id].status])} />
+    <//></div>`;
+}
+
+/* ============ VARIANT A (enriched) — global rail + canvas + inspector ============ */
+function VariantA({ nodes, edges }) {
+  const [sel, setSel] = useState("s_cat");
+  const [activeDec, setActiveDec] = useState(null);
+  const [win, setWin] = useState(null);
+
+  const dimIds = useMemo(()=>{
+    if (!activeDec) return null;
+    const keep = new Set();
+    const walk = (id)=>{ if(keep.has(id)) return; keep.add(id); stepById[id].parents.forEach(walk); };
+    DECISIONS[activeDec].supporting_steps.forEach(walk);
+    return keep;
+  }, [activeDec]);
+
+  const pickDecision = (id) => {
+    if (activeDec===id) { setActiveDec(null); return; }
+    setActiveDec(id); setSel(DECISIONS[id].supporting_steps[0]);
+  };
+  const pickNode = (id) => { setSel(id); setActiveDec(null); };
+
+  return html`<div style=${{display:"grid",gridTemplateColumns:"268px 1fr 384px",height:"100%"}}>
+    <div className="rail">
+      <h1>Churn co-pilot</h1>
+      <div className="sub">${STEPS.length} steps · logic DAG</div>
+      <div className="rail-stat">
+        <div className="box"><b>${STEPS.filter(s=>s.status==="done").length}</b><span>done</span></div>
+        <div className="box"><b>${STEPS.filter(s=>s.status==="running").length}</b><span>running</span></div>
+        <div className="box"><b>${STEPS.filter(s=>s.status==="proposed").length}</b><span>proposed</span></div>
+      </div>
+      <div className="insp-h" style=${{marginTop:4}}>All decisions (${Object.keys(DECISIONS).length})</div>
+      ${Object.keys(DECISIONS).map(id=>{const d=DECISIONS[id];
+        return html`<div key=${id} className=${"rail-item "+(activeDec===id?"on":"")} onClick=${()=>pickDecision(id)}>
+          <div className="stmt">◆ ${d.statement}</div>
+          <div className="by">by ${d.made_by} · ${d.made_at} · ${d.supporting_steps.length} step(s)</div>
+        </div>`;})}
+      ${activeDec?html`<div style=${{fontSize:11,color:"var(--muted)",marginTop:6}}>
+        Highlighting supporting steps in the DAG — click it again to clear.</div>`:null}
+    </div>
+    <${Canvas} nodes=${nodes} edges=${edges} selectedId=${sel} dimIds=${dimIds} onSelect=${(id)=>id?pickNode(id):setSel(null)}/>
+    <div className="inspector">
+      <${Inspector} id=${sel} onSelect=${pickNode}
+        onOpenAsset=${(aid)=>setWin({kind:"asset",id:aid})}
+        onOpenCode=${(f)=>setWin({kind:"code",file:f})}/>
+    </div>
+    <${FloatingWindow} win=${win} onClose=${()=>setWin(null)}/>
+  </div>`;
+}
+VariantA.title = "Enriched — rail + inspector + windows";
+
+/* ============ VARIANT B — full-bleed canvas + slide-up drawer (reference) ============ */
+function VariantB({ nodes, edges }) {
+  const [sel, setSel] = useState(null);
+  const [win, setWin] = useState(null);
+  const s = sel && stepById[sel];
+  return html`<div style=${{height:"100%",position:"relative"}}>
+    <${Canvas} nodes=${nodes} edges=${edges} selectedId=${sel} onSelect=${setSel}/>
+    ${sel ? html`<div style=${{position:"absolute",left:0,right:0,bottom:0,height:"42%",background:"var(--surface)",
+        borderTop:"1px solid var(--hair)",boxShadow:"0 -6px 24px rgba(0,0,0,.12)",overflow:"auto",padding:16}}>
+      <div style=${{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
+        <span className="kind">${s.kind.toUpperCase()}</span><b>${s.title}</b>
+        <button className="icon-btn" style=${{marginLeft:"auto"}} onClick=${()=>setSel(null)}>✕</button></div>
+      <div style=${{display:"flex",gap:12,flexWrap:"wrap"}}>
+        ${s.assets.length? s.assets.map(a=>html`<div key=${a} style=${{width:220}}><${AssetCard} id=${a}
+          onOpen=${(aid)=>setWin({kind:"asset",id:aid})}/></div>`)
+          : html`<div style=${{color:"var(--muted)"}}>No assets.</div>`}
+      </div></div>` : null}
+    <${FloatingWindow} win=${win} onClose=${()=>setWin(null)}/>
+  </div>`;
+}
+VariantB.title = "Full-bleed + drawer (reference)";
+
+/* ============ VARIANT C — decision-led three lanes (reference) ============ */
+function VariantC({ nodes, edges }) {
+  const [decId, setDecId] = useState("d_model");
+  const [nodeSel, setNodeSel] = useState(null);
+  const [win, setWin] = useState(null);
+  const dec = decId && DECISIONS[decId];
+  const dimIds = useMemo(()=>{
+    if (!dec) return null;
+    const keep = new Set(); const walk=(id)=>{ if(keep.has(id))return; keep.add(id); stepById[id].parents.forEach(walk); };
+    dec.supporting_steps.forEach(walk); return keep; }, [decId]);
+  const gallery = nodeSel ? stepById[nodeSel].assets : dec ? dec.supporting_assets : [];
+  return html`<div style=${{display:"grid",gridTemplateColumns:"280px 1fr 320px",height:"100%"}}>
+    <div className="rail">
+      <div className="insp-h" style=${{marginTop:0}}>Decisions</div>
+      ${Object.keys(DECISIONS).map(id=>{const d=DECISIONS[id];
+        return html`<div key=${id} className=${"rail-item "+(decId===id?"on":"")}
+          onClick=${()=>{setDecId(decId===id?null:id);setNodeSel(null);}}>
+          <div className="stmt">◆ ${d.statement}</div></div>`;})}
+    </div>
+    <${Canvas} nodes=${nodes} edges=${edges} selectedId=${nodeSel} dimIds=${dimIds} onSelect=${setNodeSel}/>
+    <div className="inspector">
+      <div className="insp-h" style=${{marginTop:0}}>${nodeSel?"Step assets":"Decision assets"}</div>
+      ${gallery.length? gallery.map(a=>html`<${AssetCard} key=${a} id=${a} onOpen=${(aid)=>setWin({kind:"asset",id:aid})}/>`)
+        : html`<div style=${{color:"var(--muted)"}}>Pick a decision or node.</div>`}
+    </div>
+    <${FloatingWindow} win=${win} onClose=${()=>setWin(null)}/>
+  </div>`;
+}
+VariantC.title = "Decision-led lanes (reference)";
+
+/* ---------------- shell ---------------- */
+const VARIANTS = { A:VariantA, B:VariantB, C:VariantC };
+const ORDER = ["A","B","C"];
+function useParam() {
+  const get = () => (new URLSearchParams(location.search).get("variant")||"A").toUpperCase();
+  const [v,setV] = useState(ORDER.includes(get())?get():"A");
+  const set = (nv)=>{ const u=new URL(location); u.searchParams.set("variant",nv); history.replaceState(null,"",u); setV(nv); };
+  return [v,set];
+}
+function App() {
+  const { nodes, edges } = useLayout();
+  const [variant, setVariant] = useParam();
+  const [theme, setTheme] = useState("light");
+  useEffect(()=>{ document.documentElement.setAttribute("data-theme",theme); },[theme]);
+  useEffect(()=>{
+    const h=(e)=>{ if(/input|textarea/i.test(e.target.tagName)||e.target.isContentEditable) return;
+      const i=ORDER.indexOf(variant);
+      if(e.key==="ArrowRight") setVariant(ORDER[(i+1)%ORDER.length]);
+      if(e.key==="ArrowLeft") setVariant(ORDER[(i-1+ORDER.length)%ORDER.length]); };
+    window.addEventListener("keydown",h); return ()=>window.removeEventListener("keydown",h); },[variant]);
+  const V = VARIANTS[variant];
+  return html`<${ThemeCtx.Provider} value=${theme}><div style=${{height:"100%"}}>
+    <div className="topbar">
+      <span className="brand">ds-copilot <small>· logic-DAG + asset viewer</small></span>
+      <button className="icon-btn" onClick=${()=>setTheme(theme==="light"?"dark":"light")}>${theme==="light"?"◑ dark":"◐ light"}</button>
+    </div>
+    <${V} nodes=${nodes} edges=${edges}/>
+    <div className="switcher">
+      <button onClick=${()=>{const i=ORDER.indexOf(variant);setVariant(ORDER[(i-1+ORDER.length)%ORDER.length]);}}>‹</button>
+      <span className="lbl">${variant} — <small>${V.title}</small></span>
+      <button onClick=${()=>{const i=ORDER.indexOf(variant);setVariant(ORDER[(i+1)%ORDER.length]);}}>›</button>
+    </div>
+  </div><//>`;
+}
+createRoot(document.getElementById("root")).render(html`<${App}/>`);
+</script>
+</body>
+</html>
