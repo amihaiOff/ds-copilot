@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TSX_TSCONFIG_PATH=\"$CLAUDE_PROJECT_DIR/ui/tsconfig.json\" \"$CLAUDE_PROJECT_DIR/ui/node_modules/.bin/tsx\" \"$CLAUDE_PROJECT_DIR/ui/hooks/session-catchup.ts\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TSX_TSCONFIG_PATH=\"$CLAUDE_PROJECT_DIR/ui/tsconfig.json\" \"$CLAUDE_PROJECT_DIR/ui/node_modules/.bin/tsx\" \"$CLAUDE_PROJECT_DIR/ui/hooks/report-decision-before-close.ts\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TSX_TSCONFIG_PATH=\"$CLAUDE_PROJECT_DIR/ui/tsconfig.json\" \"$CLAUDE_PROJECT_DIR/ui/node_modules/.bin/tsx\" \"$CLAUDE_PROJECT_DIR/ui/hooks/no-unilateral.ts\""
+          }
+        ]
+      }
+    ]
+  }
+}

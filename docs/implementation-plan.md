@@ -21,14 +21,14 @@ Sessions are ordered; a session's Prereqs list which earlier sessions must be do
 ## Progress tracker
 
 - [x] **S0** — Repo scaffold & tooling
-- [ ] **S1** — State schema + read-seam (the substrate)
-- [ ] **S2** — Skills batch A: state writers (capture / record-results / decision-logging)
-- [ ] **S3** — Skills batch B: dispatch / data-grounding / code-promotion
-- [ ] **S4** — Hooks (incl. the deterministic session-catch-up handler)
-- [ ] **S5** — Agent types + orchestration wiring
-- [ ] **S6** — Browser UI: server (Fastify + chokidar + SSE)
-- [ ] **S7** — Browser UI: client (React Flow + elkjs, three-pane)
-- [ ] **S8** — Integration, `dslib` seeds, run model
+- [x] **S1** — State schema + read-seam (the substrate)
+- [x] **S2** — Skills batch A: state writers (capture / record-results / decision-logging)
+- [x] **S3** — Skills batch B: dispatch / data-grounding / code-promotion
+- [x] **S4** — Hooks (incl. the deterministic session-catch-up handler)
+- [x] **S5** — Agent types + orchestration wiring
+- [x] **S6** — Browser UI: server (Fastify + chokidar + SSE)
+- [x] **S7** — Browser UI: client (React Flow + elkjs, three-pane)
+- [x] **S8** — Integration, `dslib` seeds, run model
 
 ---
 
