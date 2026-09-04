@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dslib"
+version = "0.0.0"
+description = "Shared, editable helper library for DS co-pilot step code (§9)."
+requires-python = ">=3.11"
+# Pinned DS deps are seeded in S8 (eval/CV helpers) per spec §9. Kept empty at scaffold.
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["dslib*"]
