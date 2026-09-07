@@ -316,3 +316,8 @@ Workers import `dslib/` freely; only the Code Maintainer writes it.
   browser.
 - **Skill** — a packaged instruction set; in this system, the exclusive writer of state.
 - **Hook** — hard enforcement that stops an agent from breaking a rule.
+
+---
+
+*This manual is authored in `docs/manual.md`. Regenerate `docs/manual.html` after editing
+with `node scripts/build-manual.mjs`.*
