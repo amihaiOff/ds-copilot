@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DS Co-Pilot — User Manual</title>
+<style>
+:root{color-scheme:light dark}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1c2530;background:#fbfcfd}
+.wrap{max-width:900px;margin:0 auto;padding:3rem 1.5rem 6rem}
+h1{font-size:2.1rem;line-height:1.2;margin:.2em 0 .1em;border-bottom:2px solid #e3e8ee;padding-bottom:.3em}
+h2{font-size:1.5rem;margin:2.4rem 0 .6rem;padding-top:.4rem;border-bottom:1px solid #e9edf2;padding-bottom:.25em}
+h3{font-size:1.15rem;margin:1.6rem 0 .4rem}
+h4{font-size:1rem;margin:1.2rem 0 .3rem}
+a{color:#0b6bcb;text-decoration:none}
+a:hover{text-decoration:underline}
+p{margin:.7rem 0}
+code{background:#eef1f5;padding:.12em .38em;border-radius:4px;font:.87em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+pre{background:#0f1720;color:#e6edf3;padding:1rem 1.15rem;border-radius:8px;overflow:auto;line-height:1.5}
+pre code{background:none;color:inherit;padding:0;font-size:.85rem}
+table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.95rem}
+th,td{border:1px solid #dfe4ea;padding:.5rem .7rem;text-align:left;vertical-align:top}
+th{background:#f1f4f8;font-weight:600}
+tr:nth-child(even) td{background:#f7f9fb}
+hr{border:none;border-top:1px solid #e3e8ee;margin:2.5rem 0}
+ul,ol{margin:.6rem 0;padding-left:1.5rem}
+li{margin:.28rem 0}
+li ul,li ol{margin:.2rem 0}
+h1+p{color:#54606d;font-size:1.05rem}
+nav.toc{background:#f4f7fa;border:1px solid #e3e8ee;border-radius:10px;padding:1rem 1.4rem;margin:1.6rem 0}
+nav.toc h2{border:none;margin:.2rem 0 .5rem;padding:0;font-size:1.1rem}
+@media (prefers-color-scheme:dark){
+body{background:#0f1418;color:#d6dee6}
+h1,h2{border-color:#243039}
+code{background:#1c242c}
+th{background:#1a222a}tr:nth-child(even) td{background:#141b21}th,td{border-color:#28323b}
+nav.toc{background:#151d24;border-color:#28323b}
+a{color:#5cb3ff}
+h1+p{color:#9aa7b3}
+}
+</style>
+</head>
+<body><div class="wrap">
+<h1 id="ds-co-pilot-user-manual">DS Co-Pilot — User Manual</h1>
+<p>A local, single-user <strong>data-science co-pilot</strong> that augments Claude Code in your IDE. It structures research as a <strong>DAG of Logic Steps</strong> on disk, tracks first-class <strong>Decisions</strong> and <strong>Datasets</strong>, and projects all of it into a standalone, read-only <strong>browser UI</strong>.</p>
+<p>This manual explains how to install, run, and drive the system. For the build contract see <a href="spec.md"><code>spec.md</code></a>; for the ubiquitous language see <a href="../CONTEXT.md"><code>../CONTEXT.md</code></a>; for repo conventions see <a href="../AGENTS.md"><code>../AGENTS.md</code></a>.</p>
+<nav class="toc"><h2 id="table-of-contents">Table of contents</h2>
+<ul>
+<li><a href="#1-overview">1. Overview</a></li>
+<li><a href="#2-concepts-and-architecture">2. Concepts and architecture</a></li>
+<li><a href="#3-installation">3. Installation</a></li>
+<li><a href="#4-running-the-browser-ui">4. Running the browser UI</a></li>
+<li><a href="#5-the-co-pilot-workflow">5. The co-pilot workflow</a></li>
+<ul>
+<li><a href="#51-ground-a-dataset">5.1 Ground a dataset</a></li>
+<li><a href="#52-capture-proposed-steps">5.2 Capture proposed steps</a></li>
+<li><a href="#53-dispatch-a-step">5.3 Dispatch a step</a></li>
+<li><a href="#54-record-decisions">5.4 Record decisions</a></li>
+<li><a href="#55-promote-shared-code">5.5 Promote shared code</a></li>
+</ul>
+<li><a href="#6-on-disk-state-layout">6. On-disk state layout</a></li>
+<li><a href="#7-skills-reference">7. Skills reference</a></li>
+<li><a href="#8-agents-reference">8. Agents reference</a></li>
+<li><a href="#9-hooks-reference">9. Hooks reference</a></li>
+<li><a href="#10-the-shared-library-dslib">10. The shared library dslib</a></li>
+<li><a href="#11-troubleshooting">11. Troubleshooting</a></li>
+<li><a href="#12-glossary">12. Glossary</a></li>
+</ul>
+</nav>
+<h2 id="1-overview">1. Overview</h2>
+<p>The co-pilot has <strong>four homes</strong> for its moving parts, and keeping them separate is what makes the system predictable:</p>
+<ul>
+<li><strong>Files</strong> are the canonical state — the single source of truth, on disk under <code>steps/</code> and</li>
+</ul>
+<p>  <code>datasets/</code>.</p>
+<ul>
+<li><strong>Skills</strong> are the exclusive writers of that state.</li>
+<li><strong>Hooks</strong> are hard enforcement — they stop an agent from breaking the rules.</li>
+<li><strong>The browser UI</strong> is a strictly read-only projection — it renders the state and never</li>
+</ul>
+<p>  writes it.</p>
+<p>You *use* the co-pilot by holding a conversation with the <strong>Orchestrator</strong> (your main Claude Code session) while the <strong>browser UI</strong> shows the research graph filling in live. Running or instantiating a step is <strong>conversation-only</strong> — there is no button in the UI that changes state.</p>
+<p>v1 targets <strong>tabular ML</strong> (CatBoost/XGBoost, EDA, feature engineering) against <strong>local on-disk parquet</strong> datasets.</p>
+<h2 id="2-concepts-and-architecture">2. Concepts and architecture</h2>
+<p>Research is a <strong>Logic DAG</strong>: a directed acyclic graph of <strong>Logic Steps</strong>, each one a single conclusion-bearing analytical move (an *analysis* or an *experiment*). A step may build on several parents, so the structure is a graph, not a tree. Alongside it, <strong>Datasets</strong> form their own lineage DAG (which dataset was derived from which). Choices that steer the project are recorded as first-class <strong>Decisions</strong>.</p>
+<p>The pieces fit together like this:</p>
+<ul>
+<li>The <strong>Orchestrator</strong> (main conversation) is the only party that talks to you. It dispatches</li>
+</ul>
+<p>  work, relays questions, records decisions, and creates datasets. It never runs analysis   itself.</p>
+<ul>
+<li>A <strong>Worker</strong> is a headless sub-agent that executes exactly one step from a written brief. It</li>
+</ul>
+<p>  cannot ask you questions directly — on any judgement call the brief does not settle, it   <strong>halts and escalates</strong> to the Orchestrator, who asks you.</p>
+<ul>
+<li>The <strong>Code Maintainer</strong> is a sub-agent that promotes reusable code into the shared library</li>
+</ul>
+<p>  after a step finishes.</p>
+<ul>
+<li>The <strong>companion server</strong> watches the files and pushes changes to the <strong>browser UI</strong> over</li>
+</ul>
+<p>  SSE, so the graph updates live.</p>
+<h2 id="3-installation">3. Installation</h2>
+<p><strong>Prerequisites</strong></p>
+<ul>
+<li><strong>Node</strong> ≥ 18 (browser UI + companion server).</li>
+<li><strong>Python</strong> ≥ 3.11 for <code>dslib/</code> and step code. The bare-system <code>python3</code> may be older, so</li>
+</ul>
+<p>  use a virtual environment.</p>
+<p><strong>Node / UI</strong></p>
+<pre><code>cd ui
+npm install</code></pre>
+<p><strong>Python / dslib</strong></p>
+<pre><code>python3.13 -m venv .venv
+./.venv/bin/python -m pip install -e .</code></pre>
+<h2 id="4-running-the-browser-ui">4. Running the browser UI</h2>
+<p>The UI is a read-only projection of the on-disk state. In production it is <strong>one process, one port</strong>: the companion server builds and serves the client and exposes the state API plus live updates.</p>
+<pre><code>cd ui
+npm start</code></pre>
+<p><code>npm start</code> builds the React client, starts the server, serves the UI at <strong>http://localhost:4317</strong>, and opens your default browser. Until you have done real work, the graph shows only the example step shipped in <code>steps/</code>.</p>
+<p><strong>Environment overrides</strong> (all optional):</p>
+<table><thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead><tbody><tr><td><code>DS_PORT</code></td><td><code>4317</code></td><td>Port the server listens on.</td></tr><tr><td><code>DS_HOST</code></td><td><code>127.0.0.1</code></td><td>Bind host.</td></tr><tr><td><code>DS_PROJECT_ROOT</code></td><td>repo root</td><td>Project whose <code>steps/</code>/<code>datasets/</code> are projected.</td></tr><tr><td><code>DS_OPEN</code></td><td>(open)</td><td>Set to <code>0</code>/<code>false</code>/<code>no</code> to not open a browser.</td></tr></tbody></table>
+<p><strong>Read-only server endpoints</strong></p>
+<ul>
+<li><code>GET /api/state</code> — the parsed DAG model (Logic DAG + Dataset lineage DAG), re-derived from</li>
+</ul>
+<p>  disk on every request (no cache).</p>
+<ul>
+<li><code>GET /api/events</code> — Server-Sent Events; an <code>update</code> event fires whenever <code>steps/</code> or</li>
+</ul>
+<p>  <code>datasets/</code> change.</p>
+<p><strong>Development with hot reload:</strong> run <code>npm run dev</code> (Vite client) and <code>npm run server</code> (API) side by side; the dev server proxies <code>/api/*</code> to the companion server.</p>
+<h2 id="5-the-co-pilot-workflow">5. The co-pilot workflow</h2>
+<p>You drive the co-pilot from a Claude Code session in this repo, talking to the Orchestrator. The loop below is the whole system in use. Keep the browser UI open on a second monitor to watch each step land.</p>
+<h3 id="51-ground-a-dataset">5.1 Ground a dataset</h3>
+<p>Point the Orchestrator at a parquet file. The <strong>data-grounding</strong> skill copies it into <code>datasets/&lt;id&gt;/</code>, then grills you about its columns, grain, keys, business meaning, and pitfalls, and writes a <code>dataset.md</code>. External data is always copied in and described before use — never referenced in place. Datasets derived from other datasets carry their transform code and a <code>derived_from</code> edge.</p>
+<h3 id="52-capture-proposed-steps">5.2 Capture proposed steps</h3>
+<p>Brainstorm hypotheses with the Orchestrator. When you say to capture them, the <strong>proposed-step-capture</strong> skill infers each step's id, kind, and parents, <strong>confirms every field with you</strong>, then writes a minimal <code>proposed</code> node. A proposed step is defined but not yet run. You can edit or abandon proposed steps; abandoning sets a terminal <code>abandoned</code> status and never deletes the node.</p>
+<h3 id="53-dispatch-a-step">5.3 Dispatch a step</h3>
+<p>Tell the Orchestrator to run a step. The <strong>step-dispatch</strong> skill assembles an executable <strong>brief</strong>, flips the step to <code>running</code>, and spawns a headless <strong>Worker</strong>. The Worker performs the analysis, writes its results and assets, and sets a terminal status (<code>done</code> or <code>dead-end</code>). If it meets a judgement call the brief did not pin down, it <strong>halts</strong> and the Orchestrator relays the question to you, records any resulting decision, and resumes the Worker.</p>
+<h3 id="54-record-decisions">5.4 Record decisions</h3>
+<p>A choice that steers the project (for example, "truncate renewals at 12 months") is a first-class <strong>Decision</strong>. The <strong>decision-logging</strong> skill writes it as its own record with the choice, rationale, and the steps and assets that support it. Decisions appear on the global decisions rail in the UI; selecting one highlights its supporting steps in the graph.</p>
+<h3 id="55-promote-shared-code">5.5 Promote shared code</h3>
+<p>After a step completes, the Orchestrator may dispatch the <strong>Code Maintainer</strong>, which uses the <strong>code-promotion</strong> skill to lift reusable helpers into the shared <code>dslib/</code> library on a two-use rule (used once locally, promoted on the second use). It is the only writer of <code>dslib/</code> and never edits already-committed steps.</p>
+<h2 id="6-on-disk-state-layout">6. On-disk state layout</h2>
+<p>Each step and dataset is its own directory that owns its record; the graph is <strong>derived</strong> by scanning, never stored in a central manifest. This keeps parallel Workers from colliding.</p>
+<pre><code>steps/&lt;ulid&gt;-&lt;slug&gt;/
+├── step.md            frontmatter + goal
+├── brief.md           the Worker's executable brief (written at dispatch)
+├── assumptions.md     assumptions logged during the run
+├── logic_process.md   curated, human-facing reasoning trace
+├── results.md         outputs + conclusion (+ asset citations)
+├── assets/            plots/tables/artifacts + run-log
+├── decisions/&lt;id&gt;.md  first-class Decision records
+└── code/main.py       the step's Python entrypoint
+
+datasets/&lt;ulid&gt;-&lt;slug&gt;/
+├── data.parquet       the canonical copy (data lives inside its folder)
+├── dataset.md         what it is, why, and what it is derived from
+└── code/              derived datasets only: the transform script</code></pre>
+<p><strong>Step status</strong> moves <code>proposed → running → done | dead-end</code>, plus <code>proposed → abandoned</code>. A <code>dead-end</code> step ran but was unfruitful; an <code>abandoned</code> step was dropped before it ever ran. Both are terminal and excluded from the working frontier.</p>
+<h2 id="7-skills-reference">7. Skills reference</h2>
+<p>Skills are the exclusive writers of state. All six live under <code>.claude/skills/</code>.</p>
+<table><thead><tr><th>Skill</th><th>Used by</th><th>What it does</th></tr></thead><tbody><tr><td>proposed-step-capture</td><td>Orchestrator</td><td>Infer-then-confirm, then write / edit / abandon a <code>proposed</code> step node.</td></tr><tr><td>record-results</td><td>Worker</td><td>Write the Worker's own step tree: logic process, results, assets, terminal status.</td></tr><tr><td>decision-logging</td><td>Orchestrator</td><td>Write a first-class Decision record with rationale and supporting refs.</td></tr><tr><td>step-dispatch</td><td>Orchestrator</td><td>Assemble the brief, flip <code>proposed → running</code>, spawn the Worker.</td></tr><tr><td>data-grounding</td><td>Orchestrator</td><td>Ground an external parquet or derive a new dataset; write <code>dataset.md</code>.</td></tr><tr><td>code-promotion</td><td>Code Maintainer</td><td>Promote reusable helpers into <code>dslib/</code> on the two-use rule.</td></tr></tbody></table>
+<p>The Orchestrator also reuses the general <code>grilling</code> and <code>domain-modeling</code> skills when it interviews you, and <code>prototype</code> and <code>research</code> when a design question or an external fact needs settling.</p>
+<h2 id="8-agents-reference">8. Agents reference</h2>
+<p>Three agent types live under <code>.claude/agents/</code>.</p>
+<ul>
+<li><strong>Orchestrator</strong> — the main conversation and the sole human-facing seam. Default stance is</li>
+</ul>
+<p>  factual-only; opinions are opt-in and labelled. It dispatches steps, relays escalations,   records decisions, creates all datasets, and commits each completed step's folder.</p>
+<ul>
+<li><strong>Worker</strong> — a headless sub-agent that executes exactly one step from its brief in an</li>
+</ul>
+<p>  isolated context. It writes only its own step directory and halts on any judgement not   fixed by the brief.</p>
+<ul>
+<li><strong>Code Maintainer</strong> — a developer-oriented sub-agent, the sole writer of <code>dslib/</code>, run one</li>
+</ul>
+<p>  at a time at a quiescent point.</p>
+<h2 id="9-hooks-reference">9. Hooks reference</h2>
+<p>Hooks are hard enforcement, grouped by which agent they bind to. Handlers live under <code>ui/hooks/</code>; main-session hooks are registered in <code>.claude/settings.json</code>, and Worker hooks ride the Worker agent's frontmatter.</p>
+<p><strong>On the Worker</strong></p>
+<ul>
+<li><strong>write-confine</strong> — denies any write outside the Worker's own step directory.</li>
+<li><strong>gated-action</strong> — asks before a consequential action (a training/eval run, an expensive</li>
+</ul>
+<p>  read), unless the brief pre-approved it.</p>
+<ul>
+<li><strong>report-before-finish</strong> — blocks finishing unless results and a terminal status were</li>
+</ul>
+<p>  written, or an escalation is in flight.</p>
+<p><strong>On the Orchestrator / main session</strong></p>
+<ul>
+<li><strong>report-decision-before-close</strong> — blocks closing with a pending, unrecorded decision.</li>
+<li><strong>no-unilateral</strong> — denies a state-steering write that skips the decision-record path.</li>
+<li><strong>session-catchup</strong> — on session start, resume, or compaction, injects a read-only summary</li>
+</ul>
+<p>  (structural index of every step, the latest logic of the current frontier, and every   decision statement).</p>
+<p>Working only independent steps in parallel is a <strong>convention</strong> the Orchestrator follows, not a hard hook.</p>
+<h2 id="10-the-shared-library-dslib">10. The shared library dslib</h2>
+<p><code>dslib/</code> is the shared, editable Python library step code imports. It is seeded day-one with pure-stdlib helpers, so it imports with no heavy DS stack:</p>
+<ul>
+<li><code>dslib.evaluation</code> — <code>accuracy</code>, <code>precision</code>, <code>recall</code>, <code>f1</code>, <code>roc_auc</code>, <code>mae</code>, <code>mse</code>,</li>
+</ul>
+<p>  <code>rmse</code>, <code>r2</code>.</p>
+<ul>
+<li><code>dslib.cross_validation</code> — <code>train_test_split_indices</code>, <code>kfold_indices</code>,</li>
+</ul>
+<p>  <code>stratified_kfold_indices</code> (index-returning, deterministic with a <code>seed</code>).</p>
+<p>Smoke test:</p>
+<pre><code>./.venv/bin/python dslib/tests/test_dslib.py</code></pre>
+<p>Workers import <code>dslib/</code> freely; only the Code Maintainer writes it.</p>
+<h2 id="11-troubleshooting">11. Troubleshooting</h2>
+<ul>
+<li><strong>The UI shows only one step.</strong> That is the shipped example. The graph fills in as you</li>
+</ul>
+<p>  ground data and dispatch steps.</p>
+<ul>
+<li><strong><code>pip install -e .</code> fails with a Python-version error.</strong> The bare-system <code>python3</code> is</li>
+</ul>
+<p>  likely 3.9. Use a 3.11+ venv (see <a href="#3-installation">Installation</a>).</p>
+<ul>
+<li><strong>The browser did not open.</strong> Open http://localhost:4317 manually, or check <code>DS_OPEN</code>.</li>
+<li><strong>Port already in use.</strong> Set <code>DS_PORT</code> to a free port.</li>
+<li><strong>The graph is not updating live.</strong> The UI subscribes to <code>GET /api/events</code>; confirm the</li>
+</ul>
+<p>  server is running and reachable, and that your changes are under <code>steps/</code>/<code>datasets/</code>.</p>
+<ul>
+<li><strong>Run the tests</strong> to confirm the install is healthy: <code>cd ui &amp;&amp; npm test</code>.</li>
+</ul>
+<h2 id="12-glossary">12. Glossary</h2>
+<ul>
+<li><strong>Logic Step</strong> — the atomic unit of research: one conclusion-bearing analytical move.</li>
+</ul>
+<p>  Either an *analysis* (output is understanding) or an *experiment* (trains/evaluates against   a metric).</p>
+<ul>
+<li><strong>Logic DAG</strong> — the directed acyclic graph of Logic Steps; multi-parent.</li>
+<li><strong>Builds-on edge</strong> — a parent → child edge meaning the child builds on the parent's</li>
+</ul>
+<p>  conclusion. Owned by the child.</p>
+<ul>
+<li><strong>Root Task</strong> — the single root of the DAG: the goal, target metric, and dataset.</li>
+<li><strong>Dataset</strong> — a first-class on-disk data unit (v1: parquet) with a <code>dataset.md</code>. Either</li>
+</ul>
+<p>  *grounded* (an external file brought in and described) or *derived* (produced from other   datasets by a transform).</p>
+<ul>
+<li><strong>Dataset lineage</strong> — the derived-from DAG of datasets, separate from the Logic DAG.</li>
+<li><strong>Brief</strong> — the goal of a step (in <code>step.md</code>). Distinct from the *executable brief*, the</li>
+</ul>
+<p>  detailed instruction a Worker runs.</p>
+<ul>
+<li><strong>Decision</strong> — a choice made on the basis of conclusions that steers the Root Task. A</li>
+</ul>
+<p>  first-class record, enumerable across the whole tree; distinct from a step's conclusion.</p>
+<ul>
+<li><strong>Dead-end</strong> — a step that ran but was abandoned as unfruitful. Kept for provenance.</li>
+<li><strong>Abandoned</strong> — a proposed step dropped before it ever ran. Terminal, never deleted.</li>
+<li><strong>Frontier</strong> — the active edge of the work: the running steps, or the DAG leaves if none</li>
+</ul>
+<p>  are running. Terminal steps (dead-end, abandoned) are excluded.</p>
+<ul>
+<li><strong>Independent steps</strong> — two steps with no path between them; the precondition for working</li>
+</ul>
+<p>  them in parallel.</p>
+<ul>
+<li><strong>Orchestrator</strong> — the main-conversation agent; the sole human-facing seam.</li>
+<li><strong>Worker</strong> — a headless sub-agent that executes exactly one step from its brief.</li>
+<li><strong>Code Maintainer</strong> — the sub-agent that promotes reusable code into <code>dslib/</code>; its sole</li>
+</ul>
+<p>  writer.</p>
+<ul>
+<li><strong>Read-seam</strong> — the module that scans <code>steps/</code>/<code>datasets/</code>, parses frontmatter, and builds</li>
+</ul>
+<p>  both DAGs in memory (no cache).</p>
+<ul>
+<li><strong>Companion server</strong> — the local Node process that serves the state API and pushes live</li>
+</ul>
+<p>  updates to the browser UI.</p>
+<ul>
+<li><strong>SSE (Server-Sent Events)</strong> — the one-way channel the server uses to push updates to the</li>
+</ul>
+<p>  browser.</p>
+<ul>
+<li><strong>Skill</strong> — a packaged instruction set; in this system, the exclusive writer of state.</li>
+<li><strong>Hook</strong> — hard enforcement that stops an agent from breaking a rule.</li>
+</ul>
+</div></body>
+</html>
