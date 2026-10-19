@@ -11,8 +11,9 @@ the canonical docs plus the conventions no config confesses.
   layout. Each section links the ticket holding its full rationale.
 - **Glossary — [`CONTEXT.md`](CONTEXT.md).** The ubiquitous language (Logic Step, Decision,
   Dataset, Orchestrator/Worker/Code Maintainer, …). Use these terms; extend it via
-  `/domain-modeling` when a new term appears. In this repo the glossary is `CONTEXT.md`,
-  not `GLOSSARY.md` — wherever that skill says `GLOSSARY.md`, read and write `CONTEXT.md`.
+  `/mattpocock-skills:domain-modeling` when a new term appears. In this repo the glossary
+  is `CONTEXT.md`, not `GLOSSARY.md` — wherever that skill says `GLOSSARY.md`, read and
+  write `CONTEXT.md`.
 - **Storage rationale — [`docs/adr/0001`](docs/adr/0001-per-step-storage-derived-graph.md).**
 - **Build order — [`docs/implementation-plan.md`](docs/implementation-plan.md).** The build
   runs session by session; each session opens with a named skill and closes with
@@ -32,6 +33,10 @@ the canonical docs plus the conventions no config confesses.
 
 ## Tooling
 
+- Matt Pocock's skills (`grilling`, `domain-modeling`, `research`, `prototype`, `tdd`, …)
+  come from the `mattpocock-skills@claude-plugins-official` plugin, enabled in
+  [`.claude/settings.json`](.claude/settings.json); they're namespaced
+  `/mattpocock-skills:<name>` and track upstream.
 - UI + tests: `ui/` (one npm package). Scripts live in [`ui/package.json`](ui/package.json)
   (`npm test` = Vitest). Shared types in `ui/shared`, imported as `@shared/*`.
 - Python step code + shared lib: [`pyproject.toml`](pyproject.toml). Requires **Python 3.11+**

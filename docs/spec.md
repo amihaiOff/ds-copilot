@@ -137,7 +137,7 @@ Skills are the **exclusive writers** of state ([#6](https://github.com/amihaiOff
 | **code-promotion** | Code Maintainer | Orchestrator dispatches post-step at a quiescent point | finished step's `code/` + `dslib/` → promoted helpers in `dslib/` (two-use rule) | new |
 | **decision-logging** | Orchestrator | a first-class Decision is made (often post-escalation) | choice + rationale + supporting step/asset refs → `steps/<id>/decisions/<id>.md` | new |
 
-**Reused mattpocock skills:** `/grilling` and `/domain-modeling` (every deliberation; `data-grounding` wraps them), `/prototype` (design questions), `/research` (facts outside the working dir).
+**Reused mattpocock skills** (the `mattpocock-skills@claude-plugins-official` plugin, enabled in `.claude/settings.json`; invoked as `/mattpocock-skills:<name>`): `grilling` and `domain-modeling` (every deliberation; `data-grounding` wraps them), `prototype` (design questions), `research` (facts outside the working dir).
 
 **Notes:**
 - `asset-registration` is **folded into `record-results`** — the Worker writes assets as part of writing its step tree; no separate surface.

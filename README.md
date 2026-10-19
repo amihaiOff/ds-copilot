@@ -19,15 +19,17 @@ path, and the UI never writes state.
   older — use a venv).
 - Dependencies are installed once (`ui/` via npm, Python via a venv); see below.
 
-### Third-party skills (fetched automatically)
+### Third-party skills (Claude Code plugin)
 
-`data-grounding` and the Orchestrator lean on two skills from
-[mattpocock/skills](https://github.com/mattpocock/skills) (MIT): `/grilling` and
-`/domain-modeling`. They are not committed — a SessionStart hook
-([`scripts/fetch-external-skills.sh`](scripts/fetch-external-skills.sh)) installs
-them into `.claude/skills/` at a pinned commit the first time a Claude Code session
-opens in the repo (needs `git` + network; offline, it warns and carries on). To
-update, bump `UPSTREAM_SHA` in the script and delete the two skill folders.
+`data-grounding` and the Orchestrator lean on skills from
+[mattpocock/skills](https://github.com/mattpocock/skills) (MIT) — chiefly
+`/mattpocock-skills:grilling` and `/mattpocock-skills:domain-modeling`, plus
+`prototype`, `research`, `tdd`, `diagnosing-bugs`. They come from the
+`mattpocock-skills@claude-plugins-official` plugin, enabled for the project in
+[`.claude/settings.json`](.claude/settings.json): Claude Code offers to install it
+the first time you open the repo (or run
+`claude plugin install mattpocock-skills@claude-plugins-official`), and it updates
+itself. Don't also install them via `npx skills` — you'd get every skill twice.
 
 ## Run the browser UI (one command)
 

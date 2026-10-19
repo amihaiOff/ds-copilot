@@ -33,11 +33,11 @@ Pick the mode by what the user brought:
 1. **Copy the parquet in** — copy the source file to
    `datasets/<id>/data.parquet`. Copy, do not move or symlink; the folder owns the
    canonical copy (copied-in parquet is effectively immutable → no staleness).
-2. **Grill against the Columns checklist** — use `/grilling` to interrogate the user
+2. **Grill against the Columns checklist** — use `/mattpocock-skills:grilling` to interrogate the user
    for every body field below: each column's meaning, null convention, and pitfalls;
    the grain and keys; the business meaning; known pitfalls; open questions. A field
    you cannot settle is recorded literally as `unknown` — never omitted.
-3. **Fold new terms into `CONTEXT.md`** — run `/domain-modeling` for any domain term
+3. **Fold new terms into `CONTEXT.md`** — run `/mattpocock-skills:domain-modeling` for any domain term
    the grilling surfaced, so the glossary stays the ubiquitous language.
 4. **Fingerprint and write `dataset.md`** — compute the fingerprint (below) and write
    the file with `kind: grounded`, `derived_from: []`.

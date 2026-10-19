@@ -211,7 +211,9 @@ Skills are the exclusive writers of state. All six live under `.claude/skills/`.
 
 The Orchestrator also reuses the general `grilling` and `domain-modeling` skills when it
 interviews you, and `prototype` and `research` when a design question or an external fact
-needs settling.
+needs settling. These come from Matt Pocock's `mattpocock-skills@claude-plugins-official`
+plugin, which the project enables in `.claude/settings.json`. Claude Code offers to install
+it the first time you open the repo, and it updates itself.
 
 ## 8. Agents reference
 

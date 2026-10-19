@@ -1,15 +1,9 @@
 {
+  "enabledPlugins": {
+    "mattpocock-skills@claude-plugins-official": true
+  },
   "hooks": {
     "SessionStart": [
-      {
-        "matcher": "startup|resume|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/scripts/fetch-external-skills.sh\""
-          }
-        ]
-      },
       {
         "matcher": "startup|resume|compact",
         "hooks": [
