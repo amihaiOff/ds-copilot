@@ -7,3 +7,7 @@ out/
 *.vsix
 .DS_Store
 .env
+
+# Third-party skills fetched by scripts/fetch-external-skills.sh (SessionStart)
+.claude/skills/grilling/
+.claude/skills/domain-modeling/

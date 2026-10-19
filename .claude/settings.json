@@ -6,6 +6,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/fetch-external-skills.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
             "command": "TSX_TSCONFIG_PATH=\"$CLAUDE_PROJECT_DIR/ui/tsconfig.json\" \"$CLAUDE_PROJECT_DIR/ui/node_modules/.bin/tsx\" \"$CLAUDE_PROJECT_DIR/ui/hooks/session-catchup.ts\""
           }
         ]

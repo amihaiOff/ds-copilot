@@ -19,6 +19,16 @@ path, and the UI never writes state.
   older — use a venv).
 - Dependencies are installed once (`ui/` via npm, Python via a venv); see below.
 
+### Third-party skills (fetched automatically)
+
+`data-grounding` and the Orchestrator lean on two skills from
+[mattpocock/skills](https://github.com/mattpocock/skills) (MIT): `/grilling` and
+`/domain-modeling`. They are not committed — a SessionStart hook
+([`scripts/fetch-external-skills.sh`](scripts/fetch-external-skills.sh)) installs
+them into `.claude/skills/` at a pinned commit the first time a Claude Code session
+opens in the repo (needs `git` + network; offline, it warns and carries on). To
+update, bump `UPSTREAM_SHA` in the script and delete the two skill folders.
+
 ## Run the browser UI (one command)
 
 The browser UI is a read-only projection of the on-disk state under `steps/` and

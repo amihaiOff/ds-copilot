@@ -11,7 +11,8 @@ the canonical docs plus the conventions no config confesses.
   layout. Each section links the ticket holding its full rationale.
 - **Glossary — [`CONTEXT.md`](CONTEXT.md).** The ubiquitous language (Logic Step, Decision,
   Dataset, Orchestrator/Worker/Code Maintainer, …). Use these terms; extend it via
-  `/domain-modeling` when a new term appears.
+  `/domain-modeling` when a new term appears. In this repo the glossary is `CONTEXT.md`,
+  not `GLOSSARY.md` — wherever that skill says `GLOSSARY.md`, read and write `CONTEXT.md`.
 - **Storage rationale — [`docs/adr/0001`](docs/adr/0001-per-step-storage-derived-graph.md).**
 - **Build order — [`docs/implementation-plan.md`](docs/implementation-plan.md).** The build
   runs session by session; each session opens with a named skill and closes with
